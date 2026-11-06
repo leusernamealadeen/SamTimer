@@ -7,6 +7,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,14 +24,18 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # v4 fixes the removed 'tools' package (upstream fix in v4.0.2).
+      # packages: "" makes the intent explicit and avoids re-breaking if
+      # runner defaults change again.
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Set up NDK
-        uses: nttld/setup-ndk@v1
-        id: setup-ndk
+        uses: android-actions/setup-android@v4
         with:
-          # Matches the README's expected ~/android-ndk-r27c path
+          packages: ""
+
+      - name: Set up NDK r27c
+        id: setup-ndk
+        uses: nttld/setup-ndk@v1
+        with:
           ndk-version: r27c
           add-to-path: false
 
@@ -36,25 +43,27 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Build debug APK
         env:
+          # README: Gradle resolves the NDK from this variable first.
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace --no-daemon
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: SamTimer-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Upload build logs on failure
+      - name: Upload build reports on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-logs
+          name: build-reports
           path: |
             **/build/reports/**
             **/build/outputs/logs/**
+          if-no-files-found: ignore
